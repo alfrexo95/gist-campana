@@ -1,9 +1,8 @@
 import os, requests, json, base64
-from datetime import datetime
 
 PAT_TOKEN = os.environ.get("PAT_TOKEN")
 REPO_SOURCE = "alfrexo95/FondosAngor"
-REPO_MEDIA = "alfrexo95/cuba-evidence" # Nuevo repositorio público
+REPO_MEDIA = "alfrexo95/cuba-evidence"
 STATE_FILE = "gist_state.json"
 HEADERS = {"Authorization": f"token {PAT_TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
@@ -20,7 +19,7 @@ def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r") as f:
             return json.load(f)
-    return {"gist_id": None, "media_index": 0}
+    return {"gist_id": None}
 
 def save_state(state):
     with open(STATE_FILE, "w") as f:
@@ -51,18 +50,18 @@ def subir_a_github_repo(filepath, filename):
             
         res = requests.put(url, headers=HEADERS, json=data, timeout=30)
         if res.status_code in [200, 201]:
-            # Construir la URL raw
             raw_url = f"https://raw.githubusercontent.com/{REPO_MEDIA}/main/{filename}"
             print(f"  ✅ Archivo público listo: {raw_url}")
             return raw_url
         else:
-            print(f"  ❌ Error subiendo a GitHub: {res.status_code} - {res.text}")
+            print(f"  ❌ Error subiendo a GitHub: {res.status_code}")
     except Exception as e:
         print(f"  ❌ Error subiendo a GitHub: {e}")
     return None
 
-def obtener_media(state):
-    print("  🔍 Buscando evidencias en FondosAngor...")
+def obtener_todos_los_medios():
+    """Obtiene TODOS los archivos del repo privado, los sube y genera el Markdown."""
+    print("  🔍 Buscando TODAS las evidencias en FondosAngor...")
     api_url = f"https://api.github.com/repos/{REPO_SOURCE}/contents/media"
     res = requests.get(api_url, headers=HEADERS, timeout=15)
     
@@ -74,28 +73,31 @@ def obtener_media(state):
     if not files:
         return ""
         
+    # Ordenar alfabéticamente para mantener un orden lógico
     files = sorted(files, key=lambda x: x['name'])
-    idx = state.get("media_index", 0) % len(files)
-    selected = files[idx]
     
-    download_url = selected['download_url']
-    r = requests.get(download_url, headers=HEADERS, timeout=30)
-    temp_file = f"/tmp/{selected['name']}"
-    with open(temp_file, 'wb') as f:
-        f.write(r.content)
-        
-    public_url = subir_a_github_repo(temp_file, selected['name'])
-        
-    os.remove(temp_file)
-    state["media_index"] = idx + 1
+    media_md_list = []
     
-    if not public_url:
-        return ""
+    for selected in files:
+        download_url = selected['download_url']
+        r = requests.get(download_url, headers=HEADERS, timeout=30)
+        temp_file = f"/tmp/{selected['name']}"
+        with open(temp_file, 'wb') as f:
+            f.write(r.content)
+            
+        public_url = subir_a_github_repo(temp_file, selected['name'])
+        os.remove(temp_file)
         
-    if selected['name'].lower().endswith('.mp4'):
-        return f"\n🎥 **[Watch Video Evidence Here]({public_url})**\n"
-    else:
-        return f"\n![Evidence Image]({public_url})\n"
+        if public_url:
+            if selected['name'].lower().endswith('.mp4'):
+                # Para videos, usamos un enlace con el nombre del archivo
+                media_md_list.append(f"\n🎥 **[Watch Video: {selected['name']}]({public_url})**\n")
+            else:
+                # Para imágenes, las incrustamos directamente
+                media_md_list.append(f"\n![Evidence: {selected['name']}]({public_url})\n")
+    
+    # Unir todos los Markdown en un solo bloque de texto
+    return "\n".join(media_md_list)
 
 def publicar_en_foros(gist_url):
     print("  📢 Publicando enlace del Gist en 10 foros y plataformas...")
@@ -155,8 +157,11 @@ def crear_o_actualizar_gist(state, contenido_md):
 
 def main():
     state = load_state()
-    media_md = obtener_media(state)
     
+    # 1. Obtener y subir TODOS los medios
+    todos_los_medios_md = obtener_todos_los_medios()
+    
+    # 2. Armar el contenido final
     contenido = f"""# 🇨🇺 Direct Relief for Cuban Families
 
 **The economic crisis in Cuba is pushing vulnerable families to the brink.** Famine and lack of medicine are daily realities.
@@ -174,12 +179,13 @@ Every sat and every fraction of a coin helps. Please use the following official 
 
 ---
 ## 📸 Related Photos and Videos
-{media_md}
+{todos_los_medios_md}
 ---
 *Transparency is key. We document everything. Updated automatically every 8 hours.*
 *Created by [PredathorHaley](https://github.com/alfrexo95)*
 """
 
+    # 3. Crear o actualizar el Gist
     gist_id, gist_url = crear_o_actualizar_gist(state, contenido)
     if gist_id:
         state["gist_id"] = gist_id
