@@ -172,6 +172,9 @@ Families are struggling to find basic food items. Children are going to bed hung
 **Why Crypto?**
 We use decentralized technology (Bitcoin, Lightning, and other cryptocurrencies) to bypass these barriers. This creates a direct, peer-to-peer channel to deliver food, medical supplies, and dignity directly to those in need. No banks, no middlemen, no censorship.
 
+**Our Commitment to Transparency:**
+100% of the funds raised will be used directly to help these vulnerable families. As the fundraising grows, we will document and show the delivery process, providing photographic and video evidence of the direct impact your donations have on their lives. We believe in complete accountability and will continuously update this page with proof of aid delivery.
+
 **How You Can Help:**
 Every sat and every fraction of a coin helps. Please use the following official addresses:
 
