@@ -1,7 +1,9 @@
-import os, requests, json, random, time
+import os, requests, json, base64
+from datetime import datetime
 
 PAT_TOKEN = os.environ.get("PAT_TOKEN")
-REPO_NAME = "alfrexo95/FondosAngor"
+REPO_SOURCE = "alfrexo95/FondosAngor"
+REPO_MEDIA = "alfrexo95/cuba-evidence" # Nuevo repositorio público
 STATE_FILE = "gist_state.json"
 HEADERS = {"Authorization": f"token {PAT_TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
@@ -24,37 +26,44 @@ def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
-# --- NUEVOS SERVICIOS DE ALOJAMIENTO ---
-def upload_image_image2url(filepath):
-    """Sube imágenes a Image2URL (límite 2MB)."""
-    print(f"  ☁️ Subiendo {os.path.basename(filepath)} a Image2URL...")
+def subir_a_github_repo(filepath, filename):
+    """Sube un archivo al repositorio público de GitHub usando la API."""
+    print(f"  ☁️ Subiendo {filename} a {REPO_MEDIA}...")
     try:
         with open(filepath, "rb") as f:
-            res = requests.post("https://www.image2url.com/api/upload", files={"file": f}, timeout=60)
+            content = base64.b64encode(f.read()).decode("utf-8")
+        
+        url = f"https://api.github.com/repos/{REPO_MEDIA}/contents/{filename}"
+        
+        # Verificar si el archivo ya existe para obtener su SHA
+        sha = None
+        res = requests.get(url, headers=HEADERS)
         if res.status_code == 200:
-            return res.json().get("url")
-    except Exception as e:
-        print(f"  ❌ Error subiendo a Image2URL: {e}")
-    return None
-
-def upload_video_brewpage(filepath):
-    """Sube videos a BrewPage (límite 20MB)."""
-    print(f"  ☁️ Subiendo {os.path.basename(filepath)} a BrewPage...")
-    try:
-        with open(filepath, "rb") as f:
-            res = requests.post("https://brewpage.app/api/files?ns=public", files={"file": f}, timeout=120)
+            sha = res.json()["sha"]
+            
+        data = {
+            "message": f"Upload {filename}",
+            "content": content,
+            "branch": "main"
+        }
+        if sha:
+            data["sha"] = sha
+            
+        res = requests.put(url, headers=HEADERS, json=data, timeout=30)
         if res.status_code in [200, 201]:
-            data = res.json()
-            # BrewPage devuelve una URL directa
-            return data.get("url")
+            # Construir la URL raw
+            raw_url = f"https://raw.githubusercontent.com/{REPO_MEDIA}/main/{filename}"
+            print(f"  ✅ Archivo público listo: {raw_url}")
+            return raw_url
+        else:
+            print(f"  ❌ Error subiendo a GitHub: {res.status_code} - {res.text}")
     except Exception as e:
-        print(f"  ❌ Error subiendo a BrewPage: {e}")
+        print(f"  ❌ Error subiendo a GitHub: {e}")
     return None
 
 def obtener_media(state):
-    """Obtiene un archivo del repo privado y lo sube a un host público compatible."""
     print("  🔍 Buscando evidencias en FondosAngor...")
-    api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/media"
+    api_url = f"https://api.github.com/repos/{REPO_SOURCE}/contents/media"
     res = requests.get(api_url, headers=HEADERS, timeout=15)
     
     if res.status_code != 200:
@@ -75,12 +84,7 @@ def obtener_media(state):
     with open(temp_file, 'wb') as f:
         f.write(r.content)
         
-    # Elegir el servicio según el tipo de archivo
-    public_url = None
-    if selected['name'].lower().endswith('.mp4'):
-        public_url = upload_video_brewpage(temp_file)
-    else:
-        public_url = upload_image_image2url(temp_file)
+    public_url = subir_a_github_repo(temp_file, selected['name'])
         
     os.remove(temp_file)
     state["media_index"] = idx + 1
@@ -88,18 +92,15 @@ def obtener_media(state):
     if not public_url:
         return ""
         
-    print(f"  ✅ Evidencia pública lista: {selected['name']}")
     if selected['name'].lower().endswith('.mp4'):
         return f"\n🎥 **[Watch Video Evidence Here]({public_url})**\n"
     else:
         return f"\n![Evidence Image]({public_url})\n"
 
-# --- PUBLICACIÓN EN 10 FOROS ---
 def publicar_en_foros(gist_url):
     print("  📢 Publicando enlace del Gist en 10 foros y plataformas...")
     mensaje = f"🇨🇺 **Direct Relief for Cuban Families**\n\nFamilies in Cuba are facing severe shortages of food and medicine. We use crypto to deliver aid directly. See the evidence and donation addresses here:\n\n{gist_url}\n\n#Cuba #Bitcoin #Solidarity"
     
-    # Lista de endpoints (método, url, payload)
     foros = [
         ("POST", "https://free.intcount.com/api/botchan/post", {"content": mensaje, "tag": "meta"}),
         ("POST", "https://anystation.net/", {"content": mensaje}),
@@ -109,9 +110,7 @@ def publicar_en_foros(gist_url):
         ("POST", "https://paste.c-net.org/", mensaje),
         ("POST", "https://pastebin.ai/api/v1/paste", {"content": mensaje}),
         ("POST", "https://brewpage.app/api/html?format=markdown", {"content": mensaje}),
-        # Telegraph requiere un método especial (se maneja aparte)
         ("TELEGRAPH", "https://api.telegra.ph/createPage", {"title": "Cuba Relief", "content": mensaje}),
-        # Termbin usa netcat, pero podemos usar su API HTTP
         ("POST", "https://termbin.com/", mensaje),
     ]
     
@@ -121,7 +120,6 @@ def publicar_en_foros(gist_url):
                 res = requests.post(url, json=payload if isinstance(payload, dict) else None, data=payload if isinstance(payload, str) else None, timeout=15)
                 print(f"    - {url.split('/')[2]}: {res.status_code}")
             elif method == "TELEGRAPH":
-                # Telegraph requiere un token de acceso; creamos uno automáticamente
                 acc_res = requests.post("https://api.telegra.ph/createAccount", json={"short_name": "CubaRelief", "author_name": "PredathorHaley"})
                 if acc_res.status_code == 200:
                     token = acc_res.json()['result']['access_token']
@@ -130,7 +128,6 @@ def publicar_en_foros(gist_url):
                     print(f"    - telegra.ph: {res.status_code}")
         except Exception as e:
             print(f"    - Error en {url}: {e}")
-    print("  ✅ Proceso de publicación en foros finalizado.")
 
 def crear_o_actualizar_gist(state, contenido_md):
     gist_data = {
