@@ -1,15 +1,12 @@
-name: Actualizar Gist de Campaña
+name: Compartir Campaña en Foros
 
 on:
   schedule:
     - cron: '0 */8 * * *' # Cada 8 horas
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  update_gist:
+  compartir:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,12 +14,5 @@ jobs:
         with:
           python-version: '3.10'
       - run: pip install requests
-      - name: Ejecutar Bot del Gist
-        env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+      - name: Compartir Enlace
         run: python gist_bot.py
-      - name: Guardar Estado
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Auto-update: Gist actualizado, multimedia y publicacion en foros"
-          file_pattern: 'gist_state.json'
