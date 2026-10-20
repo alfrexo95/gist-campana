@@ -32,6 +32,7 @@ def actualizar_gist_progreso():
     print("  📝 Actualizando Gist con barra de progreso, QR y fecha...")
     url = f"https://api.github.com/gists/{GIST_ID}"
     res = requests.get(url, headers=HEADERS)
+    
     if res.status_code != 200:
         print(f"  ❌ No se pudo obtener el Gist (Error {res.status_code}).")
         return False
@@ -54,6 +55,7 @@ def actualizar_gist_progreso():
         contenido = re.sub(r"## 💰 Campaign Progress.*?\n\n", bloque_progreso, contenido, flags=re.DOTALL)
     else:
         contenido = contenido.replace("# 🇨🇺 Direct Relief for Cuban Families", f"# 🇨🇺 Direct Relief for Cuban Families\n\n{bloque_progreso}")
+    
     if "## 📲 Scan to Donate" not in contenido:
         contenido = contenido.replace("**How You Can Help:**", f"{bloque_qr}**How You Can Help:**")
 
@@ -66,8 +68,61 @@ def actualizar_gist_progreso():
         print(f"  ❌ Error actualizando Gist: {res.status_code}")
         return False
 
+def publicar_en_piefed(mensaje):
+    if not PIEFED_USER or not PIEFED_PASS:
+        print("    - PieFed: Omitido (faltan credenciales)")
+        return False
+    try:
+        print("  🐘 Publicando en PieFed (c/Fundraising)...")
+        base_url = "https://piefed.social/api/v3"
+        
+        # 1. Login
+        login_res = requests.post(f"{base_url}/user/login", json={
+            "username_or_email": PIEFED_USER,
+            "password": PIEFED_PASS
+        }, timeout=15)
+        
+        if login_res.status_code != 200:
+            print(f"    - PieFed Login Error: {login_res.status_code}")
+            return False
+            
+        jwt = login_res.json().get("jwt")
+        
+        # 2. Buscar comunidad
+        comm_id = None
+        search_res = requests.get(f"{base_url}/search", params={"q": "fundraising", "type_": "Communities", "auth": jwt}, timeout=15)
+        if search_res.status_code == 200:
+            for c in search_res.json().get("communities", []):
+                if "fundraising" in c["community"]["name"].lower():
+                    comm_id = c["community"]["id"]
+                    break
+                    
+        if not comm_id:
+            comm_res = requests.get(f"{base_url}/community", params={"name": "fundraising@piefed.diffrint.org"}, timeout=15)
+            if comm_res.status_code == 200:
+                comm_id = comm_res.json()["community_view"]["community"]["id"]
+                
+        if comm_id:
+            # 3. Postear
+            post_res = requests.post(f"{base_url}/post", json={
+                "name": "Direct Relief for Cuban Families",
+                "body": mensaje,
+                "community_id": comm_id,
+                "auth": jwt
+            }, timeout=15)
+            if post_res.status_code in [200, 201]:
+                print("    - PieFed: 200 (Publicado)")
+                return True
+            else:
+                print(f"    - PieFed Post Error: {post_res.status_code}")
+        else:
+            print("    - PieFed: Comunidad no encontrada.")
+    except Exception as e:
+        print(f"    - Error en PieFed: {e}")
+    return False
+
 def publicar_en_foros():
-    print(f"  📢 Compartiendo el Gist en foros y plataformas...")
+    print(f"  📢 Compartiendo el Gist en foros...")
     mensaje_apoyo = random.choice(CTAS)
     gist_url = f"https://gist.github.com/alfrexo95/{GIST_ID}"
     mensaje = f"🇨🇺 **Direct Relief for Cuban Families**\n\n{mensaje_apoyo}\n\nSee the evidence and donation addresses here:\n{gist_url}\n\n#Cuba #Bitcoin #Solidarity"
@@ -118,31 +173,14 @@ def publicar_en_foros():
         except Exception as e:
             print(f"    - Error en {url}: {e}")
     
-    # --- PUBLICACIÓN EN PIEFED ---
-    if PIEFED_USER and PIEFED_PASS:
-        try:
-            print("  🐘 Publicando en PieFed (c/Fundraising)...")
-            piefed_url = "https://piefed.social/api/v3/post"
-            payload = {
-                "name": "Direct Relief for Cuban Families",
-                "body": mensaje,
-                "community_id": 12345, # Reemplaza con el ID real de c/Fundraising
-                "auth": f"{PIEFED_USER}:{PIEFED_PASS}" # Autenticación básica
-            }
-            res = requests.post(piefed_url, json=payload, timeout=20)
-            if res.status_code in [200, 201]:
-                print("    - PieFed: 200 (Publicado)")
-                exitos += 1
-            else:
-                print(f"    - PieFed: {res.status_code}")
-        except Exception as e:
-            print(f"    - Error en PieFed: {e}")
-    else:
-        print("    - PieFed: Omitido (faltan PIEFED_USER y PIEFED_PASS)")
-
     if os.path.exists(temp_file): os.remove(temp_file)
-    print(f"  ✅ Compartido en {exitos} plataformas.")
+    print(f"  ✅ Compartido en {exitos} plataformas de foros/pastebins.")
 
 if __name__ == "__main__":
     actualizar_gist_progreso()
     publicar_en_foros()
+    
+    # Publicar en PieFed
+    gist_url = f"https://gist.github.com/alfrexo95/{GIST_ID}"
+    mensaje_piefed = f"🇨🇺 **Direct Relief for Cuban Families**\n\nSee the evidence and donation addresses here: {gist_url}"
+    publicar_en_piefed(mensaje_piefed)
