@@ -7,8 +7,6 @@ from datetime import datetime
 
 # --- CONFIGURACIÓN ---
 PAT_TOKEN = os.environ.get("PAT_TOKEN")
-PIEFED_USER = os.environ.get("PIEFED_USER")
-PIEFED_PASS = os.environ.get("PIEFED_PASS")
 GIST_ID = "4c1dea8f2b1ec60aff12af268b8e4a24"
 HEADERS = {"Authorization": f"token {PAT_TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
@@ -32,6 +30,7 @@ def actualizar_gist_progreso():
     print("  📝 Actualizando Gist con barra de progreso, QR y fecha...")
     url = f"https://api.github.com/gists/{GIST_ID}"
     res = requests.get(url, headers=HEADERS)
+    
     if res.status_code != 200:
         print(f"  ❌ No se pudo obtener el Gist (Error {res.status_code}).")
         return False
@@ -54,6 +53,7 @@ def actualizar_gist_progreso():
         contenido = re.sub(r"## 💰 Campaign Progress.*?\n\n", bloque_progreso, contenido, flags=re.DOTALL)
     else:
         contenido = contenido.replace("# 🇨🇺 Direct Relief for Cuban Families", f"# 🇨🇺 Direct Relief for Cuban Families\n\n{bloque_progreso}")
+    
     if "## 📲 Scan to Donate" not in contenido:
         contenido = contenido.replace("**How You Can Help:**", f"{bloque_qr}**How You Can Help:**")
 
@@ -65,71 +65,6 @@ def actualizar_gist_progreso():
     else:
         print(f"  ❌ Error actualizando Gist: {res.status_code}")
         return False
-
-def publicar_en_piefed(mensaje):
-    if not PIEFED_USER or not PIEFED_PASS:
-        print("    - PieFed: Omitido (faltan credenciales)")
-        return False
-    try:
-        print("  🐘 Publicando en PieFed (c/Fundraising)...")
-        base_url = "https://piefed.social/api/alpha"
-        
-        # CORRECCIÓN: Usuario en minúsculas y sin espacios
-        user_clean = PIEFED_USER.strip().lower()
-        pass_clean = PIEFED_PASS.strip()
-        
-        # 1. Login
-        login_res = requests.post(f"{base_url}/user/login", json={
-            "username": user_clean,
-            "password": pass_clean
-        }, timeout=15)
-        
-        if login_res.status_code != 200:
-            print(f"    - PieFed Login Error: {login_res.status_code} - {login_res.text}")
-            return False
-            
-        jwt = login_res.json().get("jwt")
-        if not jwt:
-            print("    - PieFed: No se obtuvo el token JWT.")
-            return False
-        
-        # 2. Buscar la comunidad c/Fundraising
-        comm_id = None
-        comm_res = requests.get(f"{base_url}/community", params={"name": "fundraising"}, timeout=15)
-        if comm_res.status_code == 200:
-            data = comm_res.json()
-            if isinstance(data, dict) and "community_view" in data:
-                comm_id = data["community_view"]["community"]["id"]
-            elif isinstance(data, list) and len(data) > 0:
-                comm_id = data[0]["community"]["id"]
-        
-        if not comm_id:
-            search_res = requests.get(f"{base_url}/search", params={"q": "fundraising", "type_": "Communities"}, timeout=15)
-            if search_res.status_code == 200:
-                for c in search_res.json().get("communities", []):
-                    if "fundraising" in c["community"]["name"].lower():
-                        comm_id = c["community"]["id"]
-                        break
-                        
-        if comm_id:
-            # 3. Crear el post
-            post_res = requests.post(f"{base_url}/post", json={
-                "title": "Direct Relief for Cuban Families",
-                "body": mensaje,
-                "community_id": comm_id,
-                "auth": jwt
-            }, timeout=15)
-            
-            if post_res.status_code in [200, 201]:
-                print("    - PieFed: 200 (Publicado exitosamente)")
-                return True
-            else:
-                print(f"    - PieFed Post Error: {post_res.status_code} - {post_res.text}")
-        else:
-            print("    - PieFed: No se encontró la comunidad c/Fundraising.")
-    except Exception as e:
-        print(f"    - Error en PieFed: {e}")
-    return False
 
 def publicar_en_foros():
     print(f"  📢 Compartiendo el Gist en foros...")
@@ -189,7 +124,3 @@ def publicar_en_foros():
 if __name__ == "__main__":
     actualizar_gist_progreso()
     publicar_en_foros()
-    
-    gist_url = f"https://gist.github.com/alfrexo95/{GIST_ID}"
-    mensaje_piefed = f"🇨🇺 **Direct Relief for Cuban Families**\n\nSee the evidence and donation addresses here: {gist_url}"
-    publicar_en_piefed(mensaje_piefed)

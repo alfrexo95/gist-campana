@@ -17,6 +17,4 @@ jobs:
       - name: Ejecutar Bot
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-          PIEFED_USER: ${{ secrets.PIEFED_USER }}
-          PIEFED_PASS: ${{ secrets.PIEFED_PASS }}
         run: python gist_bot.py
