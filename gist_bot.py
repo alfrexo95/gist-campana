@@ -1,24 +1,79 @@
 import requests
 import os
+import random
+import re
 from datetime import datetime
 
 # --- CONFIGURACIÓN ---
-GIST_URL = "https://gist.github.com/alfrexo95/4c1dea8f2b1ec60aff12af268b8e4a24"
+PAT_TOKEN = os.environ.get("PAT_TOKEN")
+GIST_ID = "4c1dea8f2b1ec60aff12af268b8e4a24" # Tu Gist estático
+HEADERS = {"Authorization": f"token {PAT_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+
+# Mensajes persuasivos traducidos al inglés
+CTAS = [
+    "Supporting this charity can change lives. Donating is a great action, but sharing it so it reaches more people is even better.",
+    "Little by little, grain by grain, a bucket gets filled. Your contribution matters.",
+    "The hardest path is the one you never start. The first step is what counts.",
+    "Helping is rewarding. See for yourself."
+]
+
+def actualizar_gist_progreso():
+    """Actualiza el Gist para mostrar los $44 recaudados manteniendo el resto del texto intacto."""
+    print("  📝 Actualizando progreso en el Gist...")
+    url = f"https://api.github.com/gists/{GIST_ID}"
+    res = requests.get(url, headers=HEADERS)
+    
+    if res.status_code != 200:
+        print(f"  ❌ No se pudo obtener el Gist (Error {res.status_code}).")
+        return False
+
+    files = res.json()["files"]
+    filename = list(files.keys())[0]
+    contenido_actual = files[filename]["content"]
+
+    # Texto del progreso
+    progreso_texto = "## 💰 Current Progress: **$44 USD Raised** (Thank you!)\n\n"
+    
+    if "## 💰 Current Progress:" in contenido_actual:
+        # Si ya existe, lo reemplazamos
+        contenido_actual = re.sub(r"## 💰 Current Progress:.*?\n\n", progreso_texto, contenido_actual, flags=re.DOTALL)
+    else:
+        # Si no existe, lo insertamos justo debajo del título principal
+        contenido_actual = contenido_actual.replace(
+            "# 🇨🇺 Direct Relief for Cuban Families", 
+            f"# 🇨🇺 Direct Relief for Cuban Families\n\n{progreso_texto}"
+        )
+
+    # Enviar la actualización a GitHub
+    data = {
+        "description": "🚨 Direct Relief for Cuban Families - Crypto Donations Accepted",
+        "files": {filename: {"content": contenido_actual}}
+    }
+    res = requests.patch(url, headers=HEADERS, json=data)
+    
+    if res.status_code == 200:
+        print("  ✅ Gist actualizado con el progreso de $44.")
+        return True
+    else:
+        print(f"  ❌ Error actualizando Gist: {res.status_code}")
+        return False
 
 def publicar_en_foros():
-    print(f"  📢 Compartiendo el Gist estático: {GIST_URL}")
-    print(f"  ⏰ Hora de ejecución: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  📢 Compartiendo el Gist en foros con mensaje rotativo...")
     
-    mensaje = f"🇨🇺 **Direct Relief for Cuban Families**\n\nFamilies in Cuba are facing severe shortages of food and medicine. We use crypto to deliver aid directly. See the evidence and donation addresses here:\n\n{GIST_URL}\n\n#Cuba #Bitcoin #Solidarity"
+    # Elegir un mensaje de apoyo al azar
+    mensaje_apoyo = random.choice(CTAS)
+    gist_url = f"https://gist.github.com/alfrexo95/{GIST_ID}"
+    
+    # Combinar el mensaje de apoyo con el enlace
+    mensaje = f"🇨🇺 **Direct Relief for Cuban Families**\n\n{mensaje_apoyo}\n\nSee the evidence and donation addresses here:\n{gist_url}\n\n#Cuba #Bitcoin #Solidarity"
     
     # Crear un archivo temporal para los servicios que requieren subir un archivo
     temp_file = "temp_message.txt"
     with open(temp_file, "w", encoding="utf-8") as f:
         f.write(mensaje)
 
-    # Lista de servicios: (nombre, método, url, payload)
     foros = [
-        # --- Foros existentes ---
         ("POST", "https://free.intcount.com/api/botchan/post", {"content": mensaje, "tag": "meta"}),
         ("POST", "https://anystation.net/", {"content": mensaje}),
         ("POST", "https://paste.rs/", mensaje),
@@ -29,21 +84,12 @@ def publicar_en_foros():
         ("POST", "https://brewpage.app/api/html?format=markdown", {"content": mensaje}),
         ("TELEGRAPH", "https://api.telegra.ph/createPage", {"title": "Cuba Relief", "content": mensaje}),
         ("POST", "https://termbin.com/", mensaje),
-        
-        # --- Nuevos sitios investigados ---
-        # Hastebin: espera el texto crudo (data)
         ("POST", "https://hastebin.com/documents", mensaje),
-        # IX.io: espera un campo 'f' con el texto
         ("POST", "http://ix.io", {"f": mensaje}),
-        # Fiche.rs: similar a otros pastebins
         ("POST", "https://fiche.rs", {"text": mensaje}),
-        # Env.sh: requiere subir un archivo (multipart)
         ("FILE", "https://envs.sh", "file"),
-        # 0x0.st: requiere subir un archivo (multipart)
         ("FILE", "https://0x0.st", "file"),
-        # Paste.centos.org: endpoint /api/create con campo 'text'
         ("POST", "https://paste.centos.org/api/create", {"text": mensaje}),
-        # Paste.debian.net: POST con campo 'text' o JSON
         ("POST", "https://paste.debian.net/", {"text": mensaje}),
     ]
     
@@ -51,7 +97,6 @@ def publicar_en_foros():
     for method, url, payload in foros:
         try:
             if method == "POST":
-                # Si el payload es un string, enviamos data, si es dict, enviamos data o json
                 if isinstance(payload, str):
                     res = requests.post(url, data=payload, timeout=15)
                 else:
@@ -60,7 +105,6 @@ def publicar_en_foros():
                 if res.status_code in [200, 201]:
                     exitos += 1
             elif method == "FILE":
-                # Para los servicios que requieren archivo
                 with open(temp_file, "rb") as f:
                     files = {payload: f}
                     res = requests.post(url, files=files, timeout=30)
@@ -68,7 +112,6 @@ def publicar_en_foros():
                 if res.status_code in [200, 201]:
                     exitos += 1
             elif method == "TELEGRAPH":
-                # Telegraph requiere crear una cuenta primero
                 acc_res = requests.post("https://api.telegra.ph/createAccount", json={"short_name": "CubaRelief", "author_name": "PredathorHaley"})
                 if acc_res.status_code == 200:
                     token = acc_res.json()['result']['access_token']
@@ -80,11 +123,11 @@ def publicar_en_foros():
         except Exception as e:
             print(f"    - Error en {url}: {e}")
     
-    # Limpiar el archivo temporal
     if os.path.exists(temp_file):
         os.remove(temp_file)
         
     print(f"  ✅ Compartido exitosamente en {exitos} plataformas.")
 
 if __name__ == "__main__":
+    actualizar_gist_progreso()
     publicar_en_foros()

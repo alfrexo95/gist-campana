@@ -1,4 +1,4 @@
-name: Compartir Campaña en Foros
+name: Actualizar Gist y Compartir
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  compartir:
+  update_and_share:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,5 +14,7 @@ jobs:
         with:
           python-version: '3.10'
       - run: pip install requests
-      - name: Compartir Enlace
+      - name: Ejecutar Bot
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }} # Se necesita para actualizar el Gist
         run: python gist_bot.py
