@@ -7,16 +7,16 @@ from datetime import datetime
 
 # --- CONFIGURACIÓN ---
 PAT_TOKEN = os.environ.get("PAT_TOKEN")
+PIEFED_USER = os.environ.get("PIEFED_USER")
+PIEFED_PASS = os.environ.get("PIEFED_PASS")
 GIST_ID = "4c1dea8f2b1ec60aff12af268b8e4a24"
 HEADERS = {"Authorization": f"token {PAT_TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
-# Direcciones
 BTC = "bc1qt3rukpe7qp737zj5j5xpxxmcqv90cfefhg5e00"
 ETH = "0xA5E6eB31868A85127B1ED82b8C760193356206ED"
 LTC = "ltc1qdyyg99l8ehp9aj4ehzvmefglmpl9750226k7ne"
 LN = "chieftrait089@walletofsatoshi.com"
 
-# Mensajes persuasivos
 CTAS = [
     "Supporting this charity can change lives. Donating is a great action, but sharing it so it reaches more people is even better.",
     "Little by little, grain by grain, a bucket gets filled. Your contribution matters.",
@@ -25,7 +25,6 @@ CTAS = [
 ]
 
 def generar_qr(data):
-    """Genera una URL para un código QR usando la API gratuita de qrserver."""
     encoded = urllib.parse.quote(data)
     return f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={encoded}"
 
@@ -33,7 +32,6 @@ def actualizar_gist_progreso():
     print("  📝 Actualizando Gist con barra de progreso, QR y fecha...")
     url = f"https://api.github.com/gists/{GIST_ID}"
     res = requests.get(url, headers=HEADERS)
-    
     if res.status_code != 200:
         print(f"  ❌ No se pudo obtener el Gist (Error {res.status_code}).")
         return False
@@ -41,54 +39,37 @@ def actualizar_gist_progreso():
     files = res.json()["files"]
     filename = list(files.keys())[0]
     contenido = files[filename]["content"]
-
     fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
     
-    # 1. Crear el bloque de Progreso (Barra + Fecha)
-    # Meta de $1000, recaudado $44
     barra_url = "https://progress-bar.dev/44/?scale=2600&title=Raised&width=400&color=f7931a"
     bloque_progreso = f"## 💰 Campaign Progress\n![Progress]({barra_url})\n**$44 USD Raised out of $2600+ Goal** *(Last updated: {fecha_actual})*\n\n"
-
-    # 2. Crear el bloque de Códigos QR
+    
     bloque_qr = "## 📲 Scan to Donate\n"
     bloque_qr += f"**BTC**\n![BTC QR]({generar_qr(BTC)})\n`{BTC}`\n\n"
     bloque_qr += f"**ETH**\n![ETH QR]({generar_qr(ETH)})\n`{ETH}`\n\n"
     bloque_qr += f"**LTC**\n![LTC QR]({generar_qr(LTC)})\n`{LTC}`\n\n"
-    bloque_qr += f"**⚡ Lightning**\n![LN QR]({generar_qr('lightning:' + LN)})\n`{LN}`\n\n"
-    bloque_qr += "---\n\n"
+    bloque_qr += f"**⚡ Lightning**\n![LN QR]({generar_qr('lightning:' + LN)})\n`{LN}`\n\n---\n\n"
 
-    # 3. Inyectar o Reemplazar en el texto
     if "## 💰 Campaign Progress" in contenido:
-        # Reemplazar el bloque de progreso existente
         contenido = re.sub(r"## 💰 Campaign Progress.*?\n\n", bloque_progreso, contenido, flags=re.DOTALL)
     else:
-        # Insertar debajo del título principal
         contenido = contenido.replace("# 🇨🇺 Direct Relief for Cuban Families", f"# 🇨🇺 Direct Relief for Cuban Families\n\n{bloque_progreso}")
-
-    # Insertar los QR si no existen
     if "## 📲 Scan to Donate" not in contenido:
-        # Lo insertamos justo antes de "How You Can Help"
         contenido = contenido.replace("**How You Can Help:**", f"{bloque_qr}**How You Can Help:**")
 
-    # Enviar actualización
-    data = {
-        "description": "🚨 Direct Relief for Cuban Families - Crypto Donations Accepted",
-        "files": {filename: {"content": contenido}}
-    }
+    data = {"description": "🚨 Direct Relief for Cuban Families", "files": {filename: {"content": contenido}}}
     res = requests.patch(url, headers=HEADERS, json=data)
-    
     if res.status_code == 200:
-        print("  ✅ Gist actualizado con éxito (Barra de progreso y QRs).")
+        print("  ✅ Gist actualizado correctamente.")
         return True
     else:
         print(f"  ❌ Error actualizando Gist: {res.status_code}")
         return False
 
 def publicar_en_foros():
-    print(f"  📢 Compartiendo el Gist en foros con mensaje rotativo...")
+    print(f"  📢 Compartiendo el Gist en foros y plataformas...")
     mensaje_apoyo = random.choice(CTAS)
     gist_url = f"https://gist.github.com/alfrexo95/{GIST_ID}"
-    
     mensaje = f"🇨🇺 **Direct Relief for Cuban Families**\n\n{mensaje_apoyo}\n\nSee the evidence and donation addresses here:\n{gist_url}\n\n#Cuba #Bitcoin #Solidarity"
     
     temp_file = "temp_message.txt"
@@ -137,6 +118,28 @@ def publicar_en_foros():
         except Exception as e:
             print(f"    - Error en {url}: {e}")
     
+    # --- PUBLICACIÓN EN PIEFED ---
+    if PIEFED_USER and PIEFED_PASS:
+        try:
+            print("  🐘 Publicando en PieFed (c/Fundraising)...")
+            piefed_url = "https://piefed.social/api/v3/post"
+            payload = {
+                "name": "Direct Relief for Cuban Families",
+                "body": mensaje,
+                "community_id": 12345, # Reemplaza con el ID real de c/Fundraising
+                "auth": f"{PIEFED_USER}:{PIEFED_PASS}" # Autenticación básica
+            }
+            res = requests.post(piefed_url, json=payload, timeout=20)
+            if res.status_code in [200, 201]:
+                print("    - PieFed: 200 (Publicado)")
+                exitos += 1
+            else:
+                print(f"    - PieFed: {res.status_code}")
+        except Exception as e:
+            print(f"    - Error en PieFed: {e}")
+    else:
+        print("    - PieFed: Omitido (faltan PIEFED_USER y PIEFED_PASS)")
+
     if os.path.exists(temp_file): os.remove(temp_file)
     print(f"  ✅ Compartido en {exitos} plataformas.")
 

@@ -2,7 +2,7 @@ name: Actualizar Gist y Compartir
 
 on:
   schedule:
-    - cron: '0 */8 * * *' # Cada 8 horas
+    - cron: '0 */8 * * *'
   workflow_dispatch:
 
 jobs:
@@ -16,5 +16,7 @@ jobs:
       - run: pip install requests
       - name: Ejecutar Bot
         env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }} # Se necesita para actualizar el Gist
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          PIEFED_USER: ${{ secrets.PIEFED_USER }}
+          PIEFED_PASS: ${{ secrets.PIEFED_PASS }}
         run: python gist_bot.py
