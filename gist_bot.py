@@ -114,9 +114,9 @@ def publicar_en_piefed(mensaje):
                         break
                         
         if comm_id:
-            # 3. Crear el post usando el endpoint /post
+            # 3. Crear el post usando el endpoint /post (CORREGIDO: title en lugar de name)
             post_res = requests.post(f"{base_url}/post", json={
-                "name": "Direct Relief for Cuban Families",
+                "title": "Direct Relief for Cuban Families",
                 "body": mensaje,
                 "community_id": comm_id,
                 "auth": jwt
