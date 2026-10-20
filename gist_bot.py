@@ -74,49 +74,61 @@ def publicar_en_piefed(mensaje):
         return False
     try:
         print("  🐘 Publicando en PieFed (c/Fundraising)...")
-        base_url = "https://piefed.social/api/v3"
+        # ENDPOINT CORREGIDO: /api/alpha/ en lugar de /api/v3/
+        base_url = "https://piefed.social/api/alpha"
         
-        # 1. Login
+        # 1. Login usando el endpoint correcto
         login_res = requests.post(f"{base_url}/user/login", json={
-            "username_or_email": PIEFED_USER,
+            "username": PIEFED_USER,
             "password": PIEFED_PASS
         }, timeout=15)
         
         if login_res.status_code != 200:
-            print(f"    - PieFed Login Error: {login_res.status_code}")
+            print(f"    - PieFed Login Error: {login_res.status_code} - {login_res.text}")
             return False
             
         jwt = login_res.json().get("jwt")
+        if not jwt:
+            print("    - PieFed: No se obtuvo el token JWT.")
+            return False
         
-        # 2. Buscar comunidad
+        # 2. Buscar la comunidad c/Fundraising
         comm_id = None
-        search_res = requests.get(f"{base_url}/search", params={"q": "fundraising", "type_": "Communities", "auth": jwt}, timeout=15)
-        if search_res.status_code == 200:
-            for c in search_res.json().get("communities", []):
-                if "fundraising" in c["community"]["name"].lower():
-                    comm_id = c["community"]["id"]
-                    break
-                    
+        # Intentar búsqueda directa por nombre
+        comm_res = requests.get(f"{base_url}/community", params={"name": "fundraising"}, timeout=15)
+        if comm_res.status_code == 200:
+            # La respuesta puede ser un objeto o una lista
+            data = comm_res.json()
+            if isinstance(data, dict) and "community_view" in data:
+                comm_id = data["community_view"]["community"]["id"]
+            elif isinstance(data, list) and len(data) > 0:
+                comm_id = data[0]["community"]["id"]
+        
         if not comm_id:
-            comm_res = requests.get(f"{base_url}/community", params={"name": "fundraising@piefed.diffrint.org"}, timeout=15)
-            if comm_res.status_code == 200:
-                comm_id = comm_res.json()["community_view"]["community"]["id"]
-                
+            # Intentar búsqueda general si la directa falla
+            search_res = requests.get(f"{base_url}/search", params={"q": "fundraising", "type_": "Communities"}, timeout=15)
+            if search_res.status_code == 200:
+                for c in search_res.json().get("communities", []):
+                    if "fundraising" in c["community"]["name"].lower():
+                        comm_id = c["community"]["id"]
+                        break
+                        
         if comm_id:
-            # 3. Postear
+            # 3. Crear el post usando el endpoint /post
             post_res = requests.post(f"{base_url}/post", json={
                 "name": "Direct Relief for Cuban Families",
                 "body": mensaje,
                 "community_id": comm_id,
                 "auth": jwt
             }, timeout=15)
+            
             if post_res.status_code in [200, 201]:
-                print("    - PieFed: 200 (Publicado)")
+                print("    - PieFed: 200 (Publicado exitosamente)")
                 return True
             else:
-                print(f"    - PieFed Post Error: {post_res.status_code}")
+                print(f"    - PieFed Post Error: {post_res.status_code} - {post_res.text}")
         else:
-            print("    - PieFed: Comunidad no encontrada.")
+            print("    - PieFed: No se encontró la comunidad c/Fundraising.")
     except Exception as e:
         print(f"    - Error en PieFed: {e}")
     return False
@@ -180,7 +192,6 @@ if __name__ == "__main__":
     actualizar_gist_progreso()
     publicar_en_foros()
     
-    # Publicar en PieFed
     gist_url = f"https://gist.github.com/alfrexo95/{GIST_ID}"
     mensaje_piefed = f"🇨🇺 **Direct Relief for Cuban Families**\n\nSee the evidence and donation addresses here: {gist_url}"
     publicar_en_piefed(mensaje_piefed)
