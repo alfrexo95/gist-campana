@@ -46,8 +46,8 @@ def actualizar_gist_progreso():
     
     # 1. Crear el bloque de Progreso (Barra + Fecha)
     # Meta de $1000, recaudado $44
-    barra_url = "https://progress-bar.dev/44/?scale=1000&title=Raised&width=400&color=f7931a"
-    bloque_progreso = f"## 💰 Campaign Progress\n![Progress]({barra_url})\n**$44 USD Raised out of $1000 Goal** *(Last updated: {fecha_actual})*\n\n"
+    barra_url = "https://progress-bar.dev/44/?scale=2600&title=Raised&width=400&color=f7931a"
+    bloque_progreso = f"## 💰 Campaign Progress\n![Progress]({barra_url})\n**$44 USD Raised out of $2600+ Goal** *(Last updated: {fecha_actual})*\n\n"
 
     # 2. Crear el bloque de Códigos QR
     bloque_qr = "## 📲 Scan to Donate\n"
