@@ -2,14 +2,21 @@ import requests
 import os
 import random
 import re
+import urllib.parse
 from datetime import datetime
 
 # --- CONFIGURACIÓN ---
 PAT_TOKEN = os.environ.get("PAT_TOKEN")
-GIST_ID = "4c1dea8f2b1ec60aff12af268b8e4a24" # Tu Gist estático
+GIST_ID = "4c1dea8f2b1ec60aff12af268b8e4a24"
 HEADERS = {"Authorization": f"token {PAT_TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
-# Mensajes persuasivos traducidos al inglés
+# Direcciones
+BTC = "bc1qt3rukpe7qp737zj5j5xpxxmcqv90cfefhg5e00"
+ETH = "0xA5E6eB31868A85127B1ED82b8C760193356206ED"
+LTC = "ltc1qdyyg99l8ehp9aj4ehzvmefglmpl9750226k7ne"
+LN = "chieftrait089@walletofsatoshi.com"
+
+# Mensajes persuasivos
 CTAS = [
     "Supporting this charity can change lives. Donating is a great action, but sharing it so it reaches more people is even better.",
     "Little by little, grain by grain, a bucket gets filled. Your contribution matters.",
@@ -17,9 +24,13 @@ CTAS = [
     "Helping is rewarding. See for yourself."
 ]
 
+def generar_qr(data):
+    """Genera una URL para un código QR usando la API gratuita de qrserver."""
+    encoded = urllib.parse.quote(data)
+    return f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={encoded}"
+
 def actualizar_gist_progreso():
-    """Actualiza el Gist para mostrar los $44 recaudados manteniendo el resto del texto intacto."""
-    print("  📝 Actualizando progreso en el Gist...")
+    print("  📝 Actualizando Gist con barra de progreso, QR y fecha...")
     url = f"https://api.github.com/gists/{GIST_ID}"
     res = requests.get(url, headers=HEADERS)
     
@@ -29,30 +40,45 @@ def actualizar_gist_progreso():
 
     files = res.json()["files"]
     filename = list(files.keys())[0]
-    contenido_actual = files[filename]["content"]
+    contenido = files[filename]["content"]
 
-    # Texto del progreso
-    progreso_texto = "## 💰 Current Progress: **$44 USD Raised** (Thank you!)\n\n"
+    fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
     
-    if "## 💰 Current Progress:" in contenido_actual:
-        # Si ya existe, lo reemplazamos
-        contenido_actual = re.sub(r"## 💰 Current Progress:.*?\n\n", progreso_texto, contenido_actual, flags=re.DOTALL)
-    else:
-        # Si no existe, lo insertamos justo debajo del título principal
-        contenido_actual = contenido_actual.replace(
-            "# 🇨🇺 Direct Relief for Cuban Families", 
-            f"# 🇨🇺 Direct Relief for Cuban Families\n\n{progreso_texto}"
-        )
+    # 1. Crear el bloque de Progreso (Barra + Fecha)
+    # Meta de $1000, recaudado $44
+    barra_url = "https://progress-bar.dev/44/?scale=1000&title=Raised&width=400&color=f7931a"
+    bloque_progreso = f"## 💰 Campaign Progress\n![Progress]({barra_url})\n**$44 USD Raised out of $1000 Goal** *(Last updated: {fecha_actual})*\n\n"
 
-    # Enviar la actualización a GitHub
+    # 2. Crear el bloque de Códigos QR
+    bloque_qr = "## 📲 Scan to Donate\n"
+    bloque_qr += f"**BTC**\n![BTC QR]({generar_qr(BTC)})\n`{BTC}`\n\n"
+    bloque_qr += f"**ETH**\n![ETH QR]({generar_qr(ETH)})\n`{ETH}`\n\n"
+    bloque_qr += f"**LTC**\n![LTC QR]({generar_qr(LTC)})\n`{LTC}`\n\n"
+    bloque_qr += f"**⚡ Lightning**\n![LN QR]({generar_qr('lightning:' + LN)})\n`{LN}`\n\n"
+    bloque_qr += "---\n\n"
+
+    # 3. Inyectar o Reemplazar en el texto
+    if "## 💰 Campaign Progress" in contenido:
+        # Reemplazar el bloque de progreso existente
+        contenido = re.sub(r"## 💰 Campaign Progress.*?\n\n", bloque_progreso, contenido, flags=re.DOTALL)
+    else:
+        # Insertar debajo del título principal
+        contenido = contenido.replace("# 🇨🇺 Direct Relief for Cuban Families", f"# 🇨🇺 Direct Relief for Cuban Families\n\n{bloque_progreso}")
+
+    # Insertar los QR si no existen
+    if "## 📲 Scan to Donate" not in contenido:
+        # Lo insertamos justo antes de "How You Can Help"
+        contenido = contenido.replace("**How You Can Help:**", f"{bloque_qr}**How You Can Help:**")
+
+    # Enviar actualización
     data = {
         "description": "🚨 Direct Relief for Cuban Families - Crypto Donations Accepted",
-        "files": {filename: {"content": contenido_actual}}
+        "files": {filename: {"content": contenido}}
     }
     res = requests.patch(url, headers=HEADERS, json=data)
     
     if res.status_code == 200:
-        print("  ✅ Gist actualizado con el progreso de $44.")
+        print("  ✅ Gist actualizado con éxito (Barra de progreso y QRs).")
         return True
     else:
         print(f"  ❌ Error actualizando Gist: {res.status_code}")
@@ -60,15 +86,11 @@ def actualizar_gist_progreso():
 
 def publicar_en_foros():
     print(f"  📢 Compartiendo el Gist en foros con mensaje rotativo...")
-    
-    # Elegir un mensaje de apoyo al azar
     mensaje_apoyo = random.choice(CTAS)
     gist_url = f"https://gist.github.com/alfrexo95/{GIST_ID}"
     
-    # Combinar el mensaje de apoyo con el enlace
     mensaje = f"🇨🇺 **Direct Relief for Cuban Families**\n\n{mensaje_apoyo}\n\nSee the evidence and donation addresses here:\n{gist_url}\n\n#Cuba #Bitcoin #Solidarity"
     
-    # Crear un archivo temporal para los servicios que requieren subir un archivo
     temp_file = "temp_message.txt"
     with open(temp_file, "w", encoding="utf-8") as f:
         f.write(mensaje)
@@ -97,36 +119,26 @@ def publicar_en_foros():
     for method, url, payload in foros:
         try:
             if method == "POST":
-                if isinstance(payload, str):
-                    res = requests.post(url, data=payload, timeout=15)
-                else:
-                    res = requests.post(url, data=payload, timeout=15)
+                res = requests.post(url, data=payload, timeout=15)
                 print(f"    - {url.split('/')[2]}: {res.status_code}")
-                if res.status_code in [200, 201]:
-                    exitos += 1
+                if res.status_code in [200, 201]: exitos += 1
             elif method == "FILE":
                 with open(temp_file, "rb") as f:
-                    files = {payload: f}
-                    res = requests.post(url, files=files, timeout=30)
+                    res = requests.post(url, files={payload: f}, timeout=30)
                 print(f"    - {url.split('/')[2]}: {res.status_code}")
-                if res.status_code in [200, 201]:
-                    exitos += 1
+                if res.status_code in [200, 201]: exitos += 1
             elif method == "TELEGRAPH":
                 acc_res = requests.post("https://api.telegra.ph/createAccount", json={"short_name": "CubaRelief", "author_name": "PredathorHaley"})
                 if acc_res.status_code == 200:
-                    token = acc_res.json()['result']['access_token']
-                    payload['access_token'] = token
+                    payload['access_token'] = acc_res.json()['result']['access_token']
                     res = requests.post(url, json=payload, timeout=15)
                     print(f"    - telegra.ph: {res.status_code}")
-                    if res.status_code == 200:
-                        exitos += 1
+                    if res.status_code == 200: exitos += 1
         except Exception as e:
             print(f"    - Error en {url}: {e}")
     
-    if os.path.exists(temp_file):
-        os.remove(temp_file)
-        
-    print(f"  ✅ Compartido exitosamente en {exitos} plataformas.")
+    if os.path.exists(temp_file): os.remove(temp_file)
+    print(f"  ✅ Compartido en {exitos} plataformas.")
 
 if __name__ == "__main__":
     actualizar_gist_progreso()
